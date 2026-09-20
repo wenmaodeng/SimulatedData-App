@@ -33,4 +33,14 @@ public interface ITransportService : IDisposable
     /// <param name="line">文本文件中的一行（不含换行符）。</param>
     /// <returns>实际投递到的目标数量（选中的客户端数；串口成功为 1）。</returns>
     int SendLine(string line);
+
+    /// <summary>
+    /// 手动发送原始字节，不追加任何分隔符（CRLF 等）。
+    /// </summary>
+    /// <param name="payload">要发送的原始字节。</param>
+    /// <param name="asText">
+    /// WebSocket 是否按文本帧发送（false 时为二进制帧）；TCP / 串口忽略此参数。
+    /// </param>
+    /// <returns>实际投递到的目标数量（选中的客户端数；串口成功为 1）。</returns>
+    int SendData(byte[] payload, bool asText);
 }

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using NetCoreServer;
 using SimulatedDataApp.Models;
 
@@ -39,6 +40,10 @@ public sealed class WebSocketTransportService : ITransportService
     public void Stop() => _server.Stop();
 
     public int SendLine(string line)
+        // 文件行按文本帧发送（无 CRLF）。
+        => SendData(Encoding.UTF8.GetBytes(line), true);
+
+    public int SendData(byte[] payload, bool asText)
     {
         var sent = 0;
         foreach (var entry in _clients.Values.ToArray())
@@ -51,7 +56,11 @@ public sealed class WebSocketTransportService : ITransportService
 
             try
             {
-                entry.Session.SendText(line);
+                // 手动字符串走文本帧，手动 HEX 走二进制帧。
+                if (asText)
+                    entry.Session.SendText(payload);
+                else
+                    entry.Session.SendBinary(payload);
                 info.SentCount++;
                 sent++;
             }

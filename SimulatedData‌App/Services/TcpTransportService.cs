@@ -38,8 +38,11 @@ public sealed class TcpTransportService : ITransportService
     public void Stop() => _server.Stop();
 
     public int SendLine(string line)
+        // TCP 文件行以 CRLF 结尾；TCP 不区分文本/二进制，asText 仅作语义占位。
+        => SendData(Encoding.UTF8.GetBytes(line + "\r\n"), true);
+
+    public int SendData(byte[] payload, bool asText)
     {
-        var payload = Encoding.UTF8.GetBytes(line + "\r\n");
         var sent = 0;
 
         foreach (var entry in _clients.Values.ToArray())

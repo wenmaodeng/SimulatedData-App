@@ -59,6 +59,13 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private bool _loop;
 
+    // 手动发送
+    [ObservableProperty]
+    private string _manualData = string.Empty;
+
+    [ObservableProperty]
+    private bool _manualIsHex;
+
     [ObservableProperty]
     private bool _running;
 
@@ -99,6 +106,11 @@ public partial class MainViewModel : ViewModelBase
 
     public int SendInterval => SendIntervalMs;
 
+    /// <summary>手动发送输入框的提示文本，随字符串 / HEX 模式切换。</summary>
+    public string ManualPlaceholder => ManualIsHex
+        ? "HEX 格式，字节间可用空格分隔，如：48 65 6C 6C 6F"
+        : "输入要手动发送的字符串（UTF-8 原样发送，不追加换行）";
+
     public bool IsNetworkMode => SelectedMode != CommTransport.Serial;
     public bool IsSerialMode => SelectedMode == CommTransport.Serial;
     public bool IsWebSocketMode => SelectedMode == CommTransport.WebSocketServer;
@@ -138,7 +150,14 @@ public partial class MainViewModel : ViewModelBase
         StopCommand.NotifyCanExecuteChanged();
         RefreshPortsCommand.NotifyCanExecuteChanged();
         BrowseFileCommand.NotifyCanExecuteChanged();
+        ManualSendCommand.NotifyCanExecuteChanged();
     }
+
+    partial void OnManualDataChanged(string value)
+        => ManualSendCommand.NotifyCanExecuteChanged();
+
+    partial void OnManualIsHexChanged(bool value)
+        => OnPropertyChanged(nameof(ManualPlaceholder));
 
     [RelayCommand(CanExecute = nameof(CanRefreshPorts))]
     private void RefreshPorts()
@@ -240,65 +259,77 @@ public partial class MainViewModel : ViewModelBase
         }
 
         Running = true;
+
+        // 未加载数据文件：仅打开通道（监听 / 打开串口），等待手动发送。
+        if (_lines is not { Count: > 0 })
+        {
+            StatusText = SelectedMode == CommTransport.Serial
+                ? "串口已打开，可手动发送数据"
+                : "服务监听中，可手动发送数据";
+            Log("未选择数据文件，通道保持打开，可使用“手动发送”；点击“停止”关闭通道。");
+            return;
+        }
+
         StatusText = "正在发送数据…";
 
         _sendCts = new CancellationTokenSource();
-        var token = _sendCts.Token;
+        var completed = await SendLoopAsync(_sendCts.Token);
+        await ShutdownAsync(completed);
+    }
+
+    /// <summary>按固定间隔逐行发送文件数据，返回是否自然发送完成（未被停止/出错打断）。</summary>
+    private async Task<bool> SendLoopAsync(CancellationToken token)
+    {
         var completed = true;
         var index = 0;
 
-        try
+        while (!token.IsCancellationRequested)
         {
-            while (!token.IsCancellationRequested)
+            if (index >= _lines!.Count)
             {
-                if (index >= _lines!.Count)
+                if (Loop)
                 {
-                    if (Loop)
-                    {
-                        index = 0;
-                        Log("数据已发送完一轮，从头开始循环发送。");
-                    }
-                    else
-                    {
-                        break;
-                    }
+                    index = 0;
+                    Log("数据已发送完一轮，从头开始循环发送。");
                 }
-
-                var line = _lines[index];
-                CurrentLineNumber = index + 1;
-                CurrentLineText = line;
-
-                try
+                else
                 {
-                    var targets = _transport!.SendLine(line);
-                    SentLines++;
-                    if (SelectedMode == CommTransport.Serial && targets == 0)
-                        Log("警告：串口未就绪，本行数据未发出。");
-                }
-                catch (Exception ex)
-                {
-                    Log($"发送数据时出错：{ex.Message}");
-                    completed = false;
-                    break;
-                }
-
-                index++;
-
-                try
-                {
-                    await Task.Delay(SendIntervalMs, token);
-                }
-                catch (OperationCanceledException)
-                {
-                    completed = false;
                     break;
                 }
             }
+
+            var line = _lines[index];
+            CurrentLineNumber = index + 1;
+            CurrentLineText = line;
+
+            try
+            {
+                var targets = _transport!.SendLine(line);
+                SentLines++;
+                if (SelectedMode == CommTransport.Serial && targets == 0)
+                    Log("警告：串口未就绪，本行数据未发出。");
+            }
+            catch (Exception ex)
+            {
+                Log($"发送数据时出错：{ex.Message}");
+                completed = false;
+                break;
+            }
+
+            index++;
+
+            try
+            {
+                await Task.Delay(SendIntervalMs, token);
+            }
+            catch (OperationCanceledException)
+            {
+                completed = false;
+                break;
+            }
         }
-        finally
-        {
-            await ShutdownAsync(completed && !token.IsCancellationRequested);
-        }
+
+        return completed && !token.IsCancellationRequested;
     }
 
     private bool CanStart() => !Running;
@@ -306,31 +337,73 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanStop))]
     private void Stop()
     {
-        _sendCts?.Cancel();
         StatusText = "正在停止…";
+
+        // 纯手动模式下没有定时循环，直接关闭通道。
+        if (_sendCts is null)
+        {
+            _ = ShutdownAsync(false);
+            return;
+        }
+
+        _sendCts.Cancel();
     }
 
     private bool CanStop() => Running;
 
+    [RelayCommand(CanExecute = nameof(CanManualSend))]
+    private void ManualSend()
+    {
+        var transport = _transport;
+        if (transport is null || !transport.IsRunning)
+        {
+            Log("通道未启动，请先点击“开始发送”打开通道。");
+            return;
+        }
+
+        if (!ManualInputCodec.TryEncode(ManualData, ManualIsHex, out var payload, out var error))
+        {
+            Log("手动发送失败：" + error);
+            return;
+        }
+
+        try
+        {
+            // 字符串模式按文本帧发送，HEX 模式按二进制帧发送。
+            var targets = transport.SendData(payload, !ManualIsHex);
+            SentLines++;
+            CurrentLineText = ManualIsHex ? ManualInputCodec.ToHexString(payload) : ManualData;
+
+            string targetDesc = SelectedMode == CommTransport.Serial
+                ? string.Empty
+                : targets > 0
+                    ? $"，投递到 {targets} 个客户端"
+                    : "，但当前没有勾选的在线客户端";
+            var preview = ManualIsHex ? ManualInputCodec.ToHexString(payload) : ManualData;
+            Log($"手动发送（{(ManualIsHex ? "HEX" : "字符串")}）{payload.Length} 字节{targetDesc}：{preview}");
+        }
+        catch (Exception ex)
+        {
+            Log($"手动发送失败：{ex.Message}");
+        }
+    }
+
+    private bool CanManualSend() => Running && !string.IsNullOrWhiteSpace(ManualData);
+
     private bool EnsureReadyToStart()
     {
-        if (string.IsNullOrWhiteSpace(DataFilePath))
+        // 数据文件为可选项：不选文件时仅打开通道，使用手动发送。
+        if (!string.IsNullOrWhiteSpace(DataFilePath))
         {
-            Log("请先选择数据文件。");
-            return false;
+            if (!File.Exists(DataFilePath))
+            {
+                Log($"数据文件不存在：{DataFilePath}");
+                return false;
+            }
+
+            if (_lines is null)
+                LoadDataFile();
         }
-
-        if (!File.Exists(DataFilePath))
-        {
-            Log($"数据文件不存在：{DataFilePath}");
-            return false;
-        }
-
-        if (_lines is null || (_lines.Count == 0 && DataFilePath is not null))
-            LoadDataFile();
-
-        if (_lines is not { Count: > 0 })
-            return false;
 
         if (Port is <= 0 or > 65535)
         {
@@ -375,6 +448,7 @@ public partial class MainViewModel : ViewModelBase
             _transport = null;
         }
 
+        _sendCts = null;
         Clients.Clear();
         ClientCount = 0;
         Running = false;

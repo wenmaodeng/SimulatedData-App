@@ -92,12 +92,15 @@ public sealed class SerialTransportService : ITransportService
     }
 
     public int SendLine(string line)
+        // 串口文件行以 CRLF 结尾。
+        => SendData(Encoding.UTF8.GetBytes(line + "\r\n"), true);
+
+    public int SendData(byte[] payload, bool asText)
     {
         var serial = _serial;
         if (serial?.IsOpen != true)
             return 0;
 
-        var payload = Encoding.UTF8.GetBytes(line + "\r\n");
         serial.Write(payload, 0, payload.Length);
         serial.Flush();
         return 1;
