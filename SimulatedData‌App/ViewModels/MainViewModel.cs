@@ -91,6 +91,9 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<string> Logs { get; } = new();
 
+    /// <summary>本机当前可用网络的 IPv4 地址（绑定网卡名，多网卡全部列出）。</summary>
+    public ObservableCollection<LocalAddressInfo> LocalAddresses { get; } = new();
+
     public int[] BaudRates { get; } =
     {
         1200, 2400, 4800, 9600, 19200, 38400, 57600,
@@ -133,7 +136,10 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         if (!Avalonia.Controls.Design.IsDesignMode)
+        {
             RefreshPorts();
+            RefreshLocalAddresses();
+        }
     }
 
     partial void OnSelectedModeChanged(CommTransport value)
@@ -184,6 +190,36 @@ public partial class MainViewModel : ViewModelBase
     }
 
     private bool CanRefreshPorts() => !Running;
+
+    [RelayCommand]
+    private void RefreshLocalAddresses()
+    {
+        LocalAddresses.Clear();
+        try
+        {
+            foreach (var address in NetworkInfoService.GetLocalIPv4Addresses())
+                LocalAddresses.Add(address);
+
+            Log(LocalAddresses.Count > 0
+                ? $"已获取本机 IPv4 地址：{string.Join("；", LocalAddresses.Select(a => a.Display))}"
+                : "未检测到可用的本机 IPv4 地址（请检查网络连接）。");
+        }
+        catch (Exception ex)
+        {
+            Log($"获取本机网络地址失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>点击界面上的某个本机 IP，快速填入监听地址。</summary>
+    [RelayCommand]
+    private void UseLocalAddress(LocalAddressInfo? address)
+    {
+        if (address is not null)
+        {
+            IpAddress = address.Address;
+            Log($"监听地址已设为 {address.Address}（{address.Name}）。");
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanBrowseFile))]
     private async Task BrowseFileAsync()

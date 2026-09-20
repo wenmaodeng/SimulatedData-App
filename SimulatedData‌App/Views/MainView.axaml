@@ -62,6 +62,35 @@
                                  PlaceholderText="如 /ws"
                                  IsEnabled="{Binding !Running}" />
                     </Grid>
+                    <!-- 本机当前可用网络的 IPv4，点击可快速填入监听地址 -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0" Text="本机 IP：" VerticalAlignment="Center" />
+                        <ItemsControl Grid.Column="1"
+                                      ItemsSource="{Binding LocalAddresses}"
+                                      VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="m:LocalAddressInfo">
+                                    <Button Margin="0,0,8,4"
+                                            Padding="8,2"
+                                            FontSize="12"
+                                            Content="{Binding Display}"
+                                            ToolTip.Tip="点击填入监听 IP（默认 0.0.0.0 表示监听所有网卡）"
+                                            CommandParameter="{Binding}"
+                                            Command="{Binding ((vm:MainViewModel)DataContext).UseLocalAddressCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Grid.Column="2"
+                                Content="刷新"
+                                Padding="10,2"
+                                VerticalAlignment="Center"
+                                Command="{Binding RefreshLocalAddressesCommand}" />
+                    </Grid>
                 </StackPanel>
 
                 <!-- 串口参数 -->
