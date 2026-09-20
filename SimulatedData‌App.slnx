@@ -1,0 +1,11 @@
+﻿<Solution>
+  <Project Path="SimulatedData‌App.Android/SimulatedData‌App.Android.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="SimulatedData‌App.Browser/SimulatedData‌App.Browser.csproj" />
+  <Project Path="SimulatedData‌App.Desktop/SimulatedData‌App.Desktop.csproj" />
+  <Project Path="SimulatedData‌App.iOS/SimulatedData‌App.iOS.csproj">
+    <Deploy />
+  </Project>
+  <Project Path="SimulatedData‌App/SimulatedData‌App.csproj" />
+</Solution>

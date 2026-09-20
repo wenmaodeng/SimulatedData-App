@@ -1,0 +1,249 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:SimulatedDataApp.ViewModels"
+             xmlns:m="using:SimulatedDataApp.Models"
+             mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="640"
+             x:Class="SimulatedDataApp.Views.MainView"
+             x:DataType="vm:MainViewModel">
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="14" ColumnDefinitions="*">
+
+        <!-- ========== 通信方式与参数 ========== -->
+        <Border Grid.Row="0"
+                BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12">
+            <StackPanel Spacing="10">
+
+                <Grid ColumnDefinitions="90,240,12,90,200">
+                    <TextBlock Grid.Column="0" Text="通信方式：" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding ModeOptions}"
+                              SelectedItem="{Binding SelectedModeOption}"
+                              IsEnabled="{Binding !Running}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ModeOption">
+                                <TextBlock Text="{Binding Text}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Grid.Column="3" Text="发送间隔：" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="{Binding SendInterval}" VerticalAlignment="Center" />
+                        <TextBlock Text="ms（固定，每行一条）" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- TCP / WebSocket 参数 -->
+                <StackPanel Spacing="10" IsVisible="{Binding IsNetworkMode}">
+                    <Grid ColumnDefinitions="90,240,12,90,120,12,90,200">
+                        <TextBlock Grid.Column="0" Text="监听 IP：" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding IpAddress}"
+                                 PlaceholderText="如 0.0.0.0 或 127.0.0.1"
+                                 IsEnabled="{Binding !Running}" />
+                        <TextBlock Grid.Column="3" Text="端口：" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="5"
+                                 Text="{Binding Port}"
+                                 IsEnabled="{Binding !Running}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="90,360" IsVisible="{Binding IsWebSocketMode}">
+                        <TextBlock Grid.Column="0" Text="WS 路径：" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding WsPath}"
+                                 PlaceholderText="如 /ws"
+                                 IsEnabled="{Binding !Running}" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- 串口参数 -->
+                <Grid ColumnDefinitions="90,240,Auto,12,90,200"
+                      IsVisible="{Binding IsSerialMode}">
+                    <TextBlock Grid.Column="0" Text="串口：" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="1"
+                              HorizontalAlignment="Stretch"
+                              IsEditable="True"
+                              ItemsSource="{Binding SerialPorts}"
+                              SelectedItem="{Binding SelectedSerialPort}"
+                              IsEnabled="{Binding !Running}" />
+                    <Button Grid.Column="2"
+                            Margin="6,0,0,0"
+                            Content="刷新"
+                            Command="{Binding RefreshPortsCommand}" />
+                    <TextBlock Grid.Column="4" Text="波特率：" VerticalAlignment="Center" />
+                    <ComboBox Grid.Column="5"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding BaudRates}"
+                              SelectedItem="{Binding SelectedBaudRate}"
+                              IsEnabled="{Binding !Running}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- ========== 数据文件与操作 ========== -->
+        <Grid Grid.Row="1" Margin="0,10,0,0"
+              ColumnDefinitions="90,*,Auto,Auto,24,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="数据文件：" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1"
+                     Text="{Binding DataFilePath}"
+                     IsReadOnly="True"
+                     PlaceholderText="按行读取的文本文件"
+                     VerticalAlignment="Center" />
+            <Button Grid.Column="2"
+                    Margin="8,0,0,0"
+                    Content="浏览…"
+                    Command="{Binding BrowseFileCommand}" />
+            <CheckBox Grid.Column="3"
+                      Margin="12,0,0,0"
+                      Content="循环发送"
+                      IsChecked="{Binding Loop}"
+                      VerticalAlignment="Center"
+                      IsEnabled="{Binding !Running}" />
+            <Button Grid.Column="5"
+                    MinWidth="96"
+                    Classes="accent"
+                    Content="开始发送"
+                    Command="{Binding StartCommand}" />
+            <Button Grid.Column="6"
+                    MinWidth="96"
+                    Content="停止"
+                    Command="{Binding StopCommand}" />
+        </Grid>
+
+        <!-- ========== 主区域：客户端列表 + 监控/日志 ========== -->
+        <Grid Grid.Row="2" Margin="0,10,0,0" ColumnDefinitions="320,12,*">
+
+            <!-- 网络客户端列表 -->
+            <Border Grid.Column="0"
+                    IsVisible="{Binding IsNetworkMode}"
+                    BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6">
+                <DockPanel Margin="8">
+                    <TextBlock DockPanel.Dock="Top"
+                               FontWeight="SemiBold"
+                               Margin="2,0,0,6"
+                               Text="{Binding ClientCount, StringFormat='客户端列表（{0} 个）— 勾选后才向该客户端发送数据'}" />
+                    <Grid DockPanel.Dock="Top"
+                          Margin="2,0,2,4"
+                          ColumnDefinitions="44,*,72">
+                        <TextBlock Grid.Column="0" Text="发送" />
+                        <TextBlock Grid.Column="1" Text="客户端地址" />
+                        <TextBlock Grid.Column="2" Text="已发送行" />
+                    </Grid>
+                    <ListBox ItemsSource="{Binding Clients}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="m:ClientInfo">
+                                <Grid ColumnDefinitions="44,*,72">
+                                    <CheckBox Grid.Column="0"
+                                              HorizontalAlignment="Center"
+                                              IsChecked="{Binding Enabled}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding EndPoint}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding SentCount}"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- 串口模式说明 -->
+            <Border Grid.Column="0"
+                    IsVisible="{Binding IsSerialMode}"
+                    BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="12">
+                <StackPanel Spacing="8">
+                    <TextBlock FontWeight="SemiBold" Text="串口发送" />
+                    <TextBlock TextWrapping="Wrap"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="串口模式下没有客户端列表，每行数据按选定的串口和波特率（8N1）写入设备，行尾追加 CRLF。" />
+                    <TextBlock Text="可用虚拟串口工具（Windows：VSPD；Linux：socat；macOS：socat）建立串口对后进行调试。"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                </StackPanel>
+            </Border>
+
+            <Grid Grid.Column="2" RowDefinitions="Auto,*">
+                <!-- 发送监控 -->
+                <Border Grid.Row="0"
+                        BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="10">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="160,160,*">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="发送进度：" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                <TextBlock>
+                                    <Run Text="{Binding CurrentLineNumber, Mode=OneWay}" />
+                                    <Run Text="/" />
+                                    <Run Text="{Binding TotalLines, Mode=OneWay}" />
+                                    <Run Text=" 行" />
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="已发送行数：" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                <TextBlock Text="{Binding SentLines}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+                                <TextBlock Text="状态：" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                <TextBlock Text="{Binding StatusText}" />
+                            </StackPanel>
+                        </Grid>
+                        <SelectableTextBlock Text="{Binding CurrentLineText}"
+                                             FontFamily="Menlo,Consolas,Courier New,monospace"
+                                             TextWrapping="NoWrap"
+                                             TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 运行日志 -->
+                <Border Grid.Row="1"
+                        Margin="0,10,0,0"
+                        BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6">
+                    <DockPanel Margin="8">
+                        <TextBlock DockPanel.Dock="Top"
+                                   FontWeight="SemiBold"
+                                   Margin="2,0,0,6"
+                                   Text="运行日志" />
+                        <ListBox x:Name="LogList"
+                                 FontFamily="Menlo,Consolas,Courier New,monospace"
+                                 FontSize="12"
+                                 ItemsSource="{Binding Logs}" />
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ========== 状态栏 ========== -->
+        <Border Grid.Row="3"
+                Margin="0,10,0,0"
+                Padding="8,4"
+                CornerRadius="4"
+                Background="{DynamicResource SystemControlBackgroundChromeLowBrush}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding StatusText}" />
+                <TextBlock Grid.Column="1"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Text="模拟终端设备数据发送工具" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

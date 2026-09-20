@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- 目录/程序集名中包含特殊字符，代码统一使用不含特殊字符的命名空间 -->
+    <RootNamespace>SimulatedDataApp</RootNamespace>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="NetCoreServer" />
+    <PackageReference Include="RJCP.SerialPortStream" />
+  </ItemGroup>
+
+  <!-- RJCP.SerialPortStream 需要原生 libnserial，这里附带 macOS 构建产物；
+       平铺复制到输出目录根部（DllImport 按名称 dlopen 才能找到）。
+       Linux/Windows 请参考 RJCP 文档安装/编译。 -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="Native\libnserial.so.1"
+          Condition="Exists('Native\libnserial.so.1')"
+          Link="libnserial.so.1"
+          CopyToOutputDirectory="PreserveNewest" />
+    <!-- 同时提供 .dylib 命名，兼容不同探测顺序 -->
+    <None Include="Native\libnserial.so.1"
+          Condition="Exists('Native\libnserial.so.1')"
+          Link="libnserial.dylib"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
