@@ -11,7 +11,7 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="14" ColumnDefinitions="*">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="14" ColumnDefinitions="*">
 
         <!-- ========== 通信方式与参数 ========== -->
         <Border Grid.Row="0"
@@ -181,8 +181,61 @@
             </Grid>
         </Border>
 
+        <!-- ========== 自定义信号 ========== -->
+        <Border Grid.Row="3"
+                Margin="0,10,0,0"
+                BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="10">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                    <CheckBox Content="启用自定义信号（忽略数据文件）"
+                              IsChecked="{Binding UseCustomSignal}"
+                              FontWeight="SemiBold" />
+                    <GridSplitter IsEnabled="False" />
+                    <TextBlock Grid.Column="2" Text="挡位：" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <ComboBox Grid.Column="3"
+                              Width="72"
+                              ItemsSource="{Binding GearOptions}"
+                              SelectedItem="{Binding Gear}" />
+                    <TextBlock Grid.Column="4" Text="桩杆：" VerticalAlignment="Center" Margin="12,0,4,0" />
+                    <ComboBox Grid.Column="5"
+                              Width="72"
+                              ItemsSource="{Binding PileOptions}"
+                              SelectedItem="{Binding Pile}" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding SignalStates}" IsEnabled="{Binding UseCustomSignal}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SignalStateItem">
+                            <ToggleButton Content="{Binding Label}"
+                                          IsChecked="{Binding IsOn, Mode=TwoWay}"
+                                          Margin="4"
+                                          Padding="8,4"
+                                          MinWidth="110"
+                                          FontSize="12" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="提示：按钮按下为信号 ON，抬起为 OFF；点击“开始发送”后每 200ms 自动下发一帧 KSXT。"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            Content="重置全部信号"
+                            Padding="10,2"
+                            Command="{Binding ResetSignalsCommand}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- ========== 主区域：客户端列表 + 监控/日志 ========== -->
-        <Grid Grid.Row="3" Margin="0,10,0,0" ColumnDefinitions="320,12,*">
+        <Grid Grid.Row="4" Margin="0,10,0,0" ColumnDefinitions="320,12,*">
 
             <!-- 网络客户端列表 -->
             <Border Grid.Column="0"
@@ -303,7 +356,7 @@
         </Grid>
 
         <!-- ========== 状态栏 ========== -->
-        <Border Grid.Row="4"
+        <Border Grid.Row="5"
                 Margin="0,10,0,0"
                 Padding="8,4"
                 CornerRadius="4"

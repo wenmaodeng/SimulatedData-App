@@ -10,6 +10,26 @@ using SimulatedDataApp.Services;
 
 namespace SimulatedDataApp.ViewModels;
 
+/// <summary>UI 上每个信号按钮的展示标签（按 HsIoSignalMap 顺序，1-based 索引）。</summary>
+public static class SignalLabels
+{
+    public static IReadOnlyList<string> Labels { get; } = new[]
+    {
+        "1. 车门", "2. 安全带", "3. 钥匙开关", "4. 熄火", "5. 左转向", "6. 右转向",
+        "7. 近光灯", "8. 远光灯", "9. 手刹", "10. 刹车", "11. 离合", "12. 副刹车",
+        "13. 喇叭", "14. 雨刷", "15. 危险报警灯", "16. 示廓灯",
+        "17. 雾灯", "18. 左单边桥1", "19. 左单边桥2", "20. 右单边桥1", "21. 右单边桥2",
+        "23. 左后绕车", "24. 右后绕车", "25. 右前绕车", "26. 左前绕车"
+    };
+
+    /// <summary>bool 信号编号集合（1-based）。</summary>
+    public static IReadOnlyList<int> BoolSignalIds { get; } = new[]
+    {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        17, 18, 19, 20, 21, 23, 24, 25, 26
+    };
+}
+
 /// <summary>通信方式下拉框选项。</summary>
 public sealed class ModeOption
 {
@@ -20,6 +40,26 @@ public sealed class ModeOption
     {
         Mode = mode;
         Text = text;
+    }
+}
+
+/// <summary>UI 上单个信号按钮的可观察状态。</summary>
+public partial class SignalStateItem : ObservableObject
+{
+    /// <summary>HsIoSignalMap 1-based 编号。</summary>
+    public int Id { get; }
+
+    /// <summary>按钮展示文本。</summary>
+    public string Label { get; }
+
+    [ObservableProperty]
+    private bool _isOn;
+
+    public SignalStateItem(int id, string label, bool isOn = false)
+    {
+        Id = id;
+        Label = label;
+        IsOn = isOn;
     }
 }
 
@@ -65,6 +105,27 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _manualIsHex;
+
+    // ===== 自定义信号模式 =====
+    /// <summary>启用后忽略数据文件，每 200ms 发送一帧自定义 KSXT。</summary>
+    [ObservableProperty]
+    private bool _useCustomSignal;
+
+    /// <summary>挡位，取值 0-7（judgeSignal2 bit 0-2）。</summary>
+    [ObservableProperty]
+    private int _gear;
+
+    /// <summary>桩杆，取值 0-7（judgeSignal2 bit 8-10）。</summary>
+    [ObservableProperty]
+    private int _pile;
+
+    /// <summary>1-based 信号编号 → 当前状态。</summary>
+    private readonly Dictionary<int, bool> _boolSignals = new();
+
+    public ObservableCollection<SignalStateItem> SignalStates { get; } = new();
+
+    public int[] GearOptions { get; } = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    public int[] PileOptions { get; } = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
     [ObservableProperty]
     private bool _running;
@@ -135,6 +196,34 @@ public partial class MainViewModel : ViewModelBase
 
     public MainViewModel()
     {
+        // 初始化信号按钮集合（不含桩杆 22，因为它是 3bit 整数）
+        foreach (var id in SignalLabels.BoolSignalIds)
+        {
+            var labelIndex = id switch
+            {
+                <= 16 => id - 1,
+                17 => 16,
+                18 => 17,
+                19 => 18,
+                20 => 19,
+                21 => 20,
+                23 => 21,
+                24 => 22,
+                25 => 23,
+                26 => 24,
+                _ => -1
+            };
+            if (labelIndex < 0 || labelIndex >= SignalLabels.Labels.Count) continue;
+            var item = new SignalStateItem(id, SignalLabels.Labels[labelIndex]);
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(SignalStateItem.IsOn))
+                    _boolSignals[item.Id] = item.IsOn;
+            };
+            SignalStates.Add(item);
+            _boolSignals[item.Id] = false;
+        }
+
         if (!Avalonia.Controls.Design.IsDesignMode)
         {
             RefreshPorts();
@@ -296,7 +385,18 @@ public partial class MainViewModel : ViewModelBase
 
         Running = true;
 
-        // 未加载数据文件：仅打开通道（监听 / 打开串口），等待手动发送。
+        // 自定义信号模式：忽略数据文件，固定每 200ms 发一帧
+        if (UseCustomSignal)
+        {
+            StatusText = "自定义信号发送中…";
+            Log("已进入自定义信号模式，每 200ms 发送一帧 KSXT。");
+            _sendCts = new CancellationTokenSource();
+            var completed = await CustomSignalLoopAsync(_sendCts.Token);
+            await ShutdownAsync(completed);
+            return;
+        }
+
+        // 未加载数据文件：仅打开通道，等待手动发送。
         if (_lines is not { Count: > 0 })
         {
             StatusText = SelectedMode == CommTransport.Serial
@@ -309,8 +409,44 @@ public partial class MainViewModel : ViewModelBase
         StatusText = "正在发送数据…";
 
         _sendCts = new CancellationTokenSource();
-        var completed = await SendLoopAsync(_sendCts.Token);
-        await ShutdownAsync(completed);
+        var ok = await SendLoopAsync(_sendCts.Token);
+        await ShutdownAsync(ok);
+    }
+
+    /// <summary>自定义信号模式：每 200ms 构造并发送一帧 KSXT。</summary>
+    private async Task<bool> CustomSignalLoopAsync(CancellationToken token)
+    {
+        var ok = true;
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                var frame = GbGpsFrameBuilder.Build(_boolSignals, Gear, Pile);
+                var targets = _transport!.SendLine(frame);
+                SentLines++;
+                CurrentLineText = frame;
+
+                if (SelectedMode == CommTransport.Serial && targets == 0)
+                    Log("警告：串口未就绪，本帧数据未发出。");
+            }
+            catch (Exception ex)
+            {
+                Log($"自定义信号发送出错：{ex.Message}");
+                ok = false;
+                break;
+            }
+
+            try
+            {
+                await Task.Delay(SendIntervalMs, token);
+            }
+            catch (OperationCanceledException)
+            {
+                ok = false;
+                break;
+            }
+        }
+        return ok && !token.IsCancellationRequested;
     }
 
     /// <summary>按固定间隔逐行发送文件数据，返回是否自然发送完成（未被停止/出错打断）。</summary>
@@ -426,19 +562,43 @@ public partial class MainViewModel : ViewModelBase
 
     private bool CanManualSend() => Running && !string.IsNullOrWhiteSpace(ManualData);
 
+    /// <summary>翻转指定编号信号的开关状态（供按钮绑定）。</summary>
+    [RelayCommand]
+    private void ToggleSignal(SignalStateItem? item)
+    {
+        if (item is null) return;
+        item.IsOn = !item.IsOn;
+        Log($"信号 {item.Id} {item.Label.Split('.')[1].Trim()} -> {(item.IsOn ? "开" : "关")}");
+    }
+
+    /// <summary>一键重置所有信号为关闭（挡位/桩杆归 0）。</summary>
+    [RelayCommand]
+    private void ResetSignals()
+    {
+        foreach (var s in SignalStates) s.IsOn = false;
+        _boolSignals.Clear();
+        foreach (var id in SignalLabels.BoolSignalIds) _boolSignals[id] = false;
+        Gear = 0;
+        Pile = 0;
+        Log("所有信号已重置。");
+    }
+
     private bool EnsureReadyToStart()
     {
-        // 数据文件为可选项：不选文件时仅打开通道，使用手动发送。
-        if (!string.IsNullOrWhiteSpace(DataFilePath))
+        // 自定义信号模式：不需要数据文件
+        if (!UseCustomSignal)
         {
-            if (!File.Exists(DataFilePath))
+            if (!string.IsNullOrWhiteSpace(DataFilePath))
             {
-                Log($"数据文件不存在：{DataFilePath}");
-                return false;
-            }
+                if (!File.Exists(DataFilePath))
+                {
+                    Log($"数据文件不存在：{DataFilePath}");
+                    return false;
+                }
 
-            if (_lines is null)
-                LoadDataFile();
+                if (_lines is null)
+                    LoadDataFile();
+            }
         }
 
         if (Port is <= 0 or > 65535)

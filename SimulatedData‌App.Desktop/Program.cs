@@ -13,6 +13,8 @@ sealed class Program
         .StartWithClassicDesktopLifetime(args);
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    // 内置中文字体（Noto Sans SC）已通过 App.axaml 的 avares:// URI 引用，
+    // 无需在代码中注册。
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()

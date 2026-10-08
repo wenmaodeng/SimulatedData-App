@@ -10,6 +10,9 @@
   
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <!-- 内置中文字体（Noto Sans SC），跨平台显示中文。
+         请把下载的 NotoSansSC-Regular.otf 或 NotoSansCJK-Regular.ttc 放到 Assets/Fonts/ 下。 -->
+    <!-- <AvaloniaResource Include="Assets\Fonts\**" /> -->
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,16 @@
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
 
+    <Application.Resources>
+        <!-- 内置中文字体（Noto Sans SC），打包在 Assets/Fonts 下，跨平台可用 -->
+        <FontFamily x:Key="AppFontFamily">avares://SimulatedData‌App/Assets/Fonts/NotoSansSC-Regular.otf#Noto Sans SC, Inter, Arial, Microsoft YaHei, PingFang SC, WenQuanYi Zen Hei, sans-serif</FontFamily>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+        <!-- Window 覆盖桌面端，UserControl 覆盖 Android/iOS/Browser 单视图端 -->
+        <Style Selector="Window, UserControl">
+            <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
+        </Style>
     </Application.Styles>
 </Application>
