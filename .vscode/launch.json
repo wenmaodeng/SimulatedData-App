@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "SimulatedData\u200cApp.Desktop (Run)",
+            "type": "node-terminal",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "command": "dotnet \"${workspaceFolder}/SimulatedData\u200cApp.Desktop/bin/Debug/net10.0/SimulatedData\u200cApp.Desktop.dll\"",
+            "cwd": "${workspaceFolder}/SimulatedData\u200cApp.Desktop"
+        }
+    ]
+}
